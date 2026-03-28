@@ -92,6 +92,7 @@ async function aiLookup(ticker, onResult, onError, onLoad) {
     onResult({
       divPerShare: data.dividend_per_payment ?? (data.dividend_per_share != null && data.payment_frequency ? +(data.dividend_per_share / data.payment_frequency).toFixed(4) : 0),
       freqId: data.freqId ?? "q_mar",
+      ...(data.sec_type ? { type: data.sec_type } : {}),
       ...(data.price != null ? { price: data.price } : {}),
       ...(data.last_payment_date ? { lastPaymentDate: data.last_payment_date } : {}),
       ...(data.note ? { notes: data.note } : {}),

@@ -90,6 +90,33 @@ def detect_freq_id(div_history, frequency):
     return None
 
 
+def detect_sec_type(clean_sym, info):
+    """Classify security type using symbol pattern and Yahoo Finance metadata.
+
+    Priority order:
+      1. Preferred  — symbol contains '-P' (e.g. WFC-PL) OR name contains 'PFD'/'PREFERRED'
+      2. ETF        — quoteType == 'ETF'
+      3. REIT       — sector == 'Real Estate'
+      4. Stock      — everything else
+    """
+    if '-P' in clean_sym.upper():
+        return 'preferred'
+
+    long_name = (info.get('longName') or info.get('shortName') or '').upper()
+    if 'PFD' in long_name or 'PREFERRED' in long_name:
+        return 'preferred'
+
+    quote_type = (info.get('quoteType') or '').upper()
+    if quote_type == 'ETF':
+        return 'bond'
+
+    sector = (info.get('sector') or '').lower()
+    if 'real estate' in sector:
+        return 'reit'
+
+    return 'stock'
+
+
 def lookup_ticker(original_sym):
     clean_sym = TRANSLATIONS.get(original_sym, original_sym.replace('/', '-'))
     ticker = yf.Ticker(clean_sym)
@@ -103,6 +130,7 @@ def lookup_ticker(original_sym):
         return {
             'symbol': original_sym,
             'yahoo_symbol': clean_sym,
+            'sec_type': 'cd',
             'price': round(float(price), 2),
             'dividend_per_share': round(price * 0.04, 4),
             'payment_frequency': 12,
@@ -111,6 +139,14 @@ def lookup_ticker(original_sym):
             'last_payment_date': None,
             'note': 'Money market — 4% annual yield applied to NAV',
         }, None
+
+    # Fetch metadata once; fall back to empty dict on any error
+    try:
+        info = ticker.info or {}
+    except Exception:
+        info = {}
+
+    sec_type = detect_sec_type(clean_sym, info)
 
     # Standard dividend logic
     div_history = ticker.dividends
@@ -137,6 +173,7 @@ def lookup_ticker(original_sym):
     return {
         'symbol': original_sym,
         'yahoo_symbol': clean_sym,
+        'sec_type': sec_type,
         'price': price,
         'dividend_per_share': annual_div_per_share,
         'payment_frequency': frequency,
