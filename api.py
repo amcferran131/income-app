@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 import yfinance as yf
 import pandas as pd
 import calendar
+import re
 from collections import Counter
 
 app = Flask(__name__)
@@ -94,22 +95,50 @@ def detect_sec_type(clean_sym, info):
     """Classify security type using symbol pattern and Yahoo Finance metadata.
 
     Priority order:
-      1. Preferred  — symbol contains '-P' (e.g. WFC-PL) OR name contains 'PFD'/'PREFERRED'
-      2. ETF        — quoteType == 'ETF'
-      3. REIT       — sector == 'Real Estate'
-      4. Stock      — everything else
+      1. Preferred  — symbol contains '-P' (e.g. WFC-PL, JPM-PM)
+      2. Preferred  — name contains preferred keywords (PFD, PREFERRED, PFD SER, etc.)
+      3. Preferred  — name contains a coupon-rate pattern (e.g. 6.75%, 5.5%)
+      4. Preferred  — shortName ends with ' - D' or ' - d' (Yahoo depositary share marker,
+                      e.g. BHFAN/BHFAO/BHFAP → 'Brighthouse Financial, Inc. - D')
+      5. ETF        — quoteType == 'ETF'
+      6. REIT       — sector == 'Real Estate'
+      7. Stock      — everything else
+
+    Note: DCOMP (Dime Community Bancshares) returns no preferred indicators from Yahoo
+    Finance (plain company name, no ' - D' suffix). It cannot be auto-detected as
+    preferred from metadata alone; add it to TRANSLATIONS or set type manually.
     """
+    # 1. Symbol pattern: dash followed by P (e.g. WFC-PL, ATH-PB)
     if '-P' in clean_sym.upper():
         return 'preferred'
 
-    long_name = (info.get('longName') or info.get('shortName') or '').upper()
-    if 'PFD' in long_name or 'PREFERRED' in long_name:
+    long_name = (info.get('longName') or '').upper()
+    short_name_raw = (info.get('shortName') or '')
+    combined = long_name or short_name_raw.upper()
+
+    # 2. Name keywords
+    PREFERRED_KEYWORDS = (
+        'PREFERRED', 'PFD', 'PFDPFD', 'PFD SER',
+        'DEP SHS', 'DEPOSITARY SHS', 'DEP. SHS',
+    )
+    if any(kw in combined for kw in PREFERRED_KEYWORDS):
         return 'preferred'
 
+    # 3. Coupon-rate pattern in name: "6.75%", "5.5%", "7.25%", etc.
+    if re.search(r'\d+\.?\d*\s*%', combined):
+        return 'preferred'
+
+    # 4. Yahoo Finance shortName ' - D' / ' - d' suffix (depositary preferred marker)
+    #    Catches BHFAN, BHFAO, BHFAP and similar series where the name body is plain
+    if short_name_raw.strip().endswith((' - D', ' - d')):
+        return 'preferred'
+
+    # 5. ETF
     quote_type = (info.get('quoteType') or '').upper()
     if quote_type == 'ETF':
         return 'bond'
 
+    # 6. REIT
     sector = (info.get('sector') or '').lower()
     if 'real estate' in sector:
         return 'reit'
