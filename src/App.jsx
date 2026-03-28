@@ -460,7 +460,7 @@ export default function App() {
             {bulkStatus&&<span className="bstat">{bulkStatus}</span>}
             <button className="ibtn" onClick={()=>fileRef.current&&fileRef.current.click()}>Import CSV</button>
             <button className="abtn" onClick={()=>setModal("add")}>+ Add</button>
-            <button className="rbtn" onClick={()=>{setHoldings([]);window.storage?.set("ppic_v3","[]").catch(()=>{})}}>Reset</button>
+            <button className="rbtn" onClick={()=>{setHoldings([]);setView("dashboard");}}>Reset</button>
           </div>
         </header>
 
