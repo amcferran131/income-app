@@ -22,15 +22,6 @@ const FREQ = [
 
 const MN = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
-const DEMO = [
-  { id:1, ticker:"O",    name:"Realty Income Corp",          type:"reit",      shares:100,  divPerShare:0.269, freqId:"monthly" },
-  { id:2, ticker:"JEPI", name:"JPMorgan Equity Premium ETF", type:"bond",      shares:200,  divPerShare:0.385, freqId:"monthly" },
-  { id:3, ticker:"KO",   name:"Coca-Cola Co",                type:"stock",     shares:80,   divPerShare:0.485, freqId:"q_mar"   },
-  { id:4, ticker:"PFF",  name:"iShares Preferred Stock ETF", type:"preferred", shares:150,  divPerShare:0.129, freqId:"monthly" },
-  { id:5, ticker:"BND",  name:"Vanguard Total Bond ETF",     type:"bond",      shares:100,  divPerShare:0.188, freqId:"monthly" },
-  { id:6, ticker:"T",    name:"AT&T Inc",                    type:"stock",     shares:200,  divPerShare:0.278, freqId:"q_jan"   },
-  { id:7, ticker:"VNQ",  name:"Vanguard Real Estate ETF",    type:"reit",      shares:75,   divPerShare:0.730, freqId:"q_mar"   },
-];
 
 const fmt = (n, d=0) => n == null ? "--" :
   new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",minimumFractionDigits:d,maximumFractionDigits:d}).format(n);
@@ -306,14 +297,13 @@ function PaymentSchedule({holdings}) {
   );
 }
 
-function Welcome({onDemo, onImport, onManual, fileRef}) {
+function Welcome({onImport, onManual, fileRef}) {
   return (
     <div className="welcome">
       <div className="wicon">$</div>
       <h1 className="wtitle">Personal Portfolio Income Calculator</h1>
       <p className="wsub">See how much dividend and interest income your portfolio generates, month by month and year by year.</p>
       <div className="wbtns">
-        <button className="wbtn-demo" onClick={onDemo}>Step 1 - Load Demo Portfolio</button>
         <button className="wbtn-import" onClick={()=>fileRef.current&&fileRef.current.click()}>Import Brokerage CSV File</button>
         <button className="wbtn-manual" onClick={onManual}>Add Holdings Manually</button>
       </div>
@@ -431,7 +421,7 @@ export default function App() {
     <>
       <style>{CSS}</style>
       <input ref={fileRef} type="file" accept=".csv" style={{display:"none"}} onChange={handleFile}/>
-      <Welcome onDemo={()=>setHoldings(DEMO)} onImport={handleFile} onManual={()=>setModal("add")} fileRef={fileRef}/>
+      <Welcome onImport={handleFile} onManual={()=>setModal("add")} fileRef={fileRef}/>
       {modal&&<HoldingModal holding={null} onSave={saveH} onClose={()=>setModal(null)}/>}
       {impModal&&<ImportModal rows={impModal} onConfirm={confirmImport} onClose={()=>setImpModal(null)}/>}
     </>
@@ -659,8 +649,6 @@ body{background:#f1f5f9;color:#1e293b;font-family:'Outfit',sans-serif;}
 .wstep strong{display:block;font-weight:600;margin-bottom:2px;font-size:14px;}
 .wstep span{font-size:12px;color:#64748b;}
 .wbtns{display:flex;flex-direction:column;gap:10px;width:100%;max-width:380px;}
-.wbtn-demo{background:#10b981;color:#fff;border:none;border-radius:12px;padding:15px 20px;font-family:'Outfit',sans-serif;font-weight:700;font-size:15px;cursor:pointer;transition:all .2s;}
-.wbtn-demo:hover{background:#059669;transform:translateY(-1px);box-shadow:0 6px 20px #10b98133;}
 .wbtn-import{background:#3b82f6;color:#fff;border:none;border-radius:12px;padding:13px 20px;font-family:'Outfit',sans-serif;font-weight:600;font-size:14px;cursor:pointer;transition:all .2s;}
 .wbtn-import:hover{background:#2563eb;}
 .wbtn-manual{background:#fff;color:#64748b;border:1px solid #cbd5e1;border-radius:12px;padding:11px 20px;font-family:'Outfit',sans-serif;font-weight:500;font-size:13px;cursor:pointer;transition:all .2s;}
