@@ -33,6 +33,13 @@ TRANSLATIONS = {
     'AXS/PRE': 'AXS-PE',
 }
 
+# Tickers whose sec_type cannot be inferred from Yahoo Finance metadata and must be
+# hard-coded. DCOMP (Dime Community Bancshares preferred) returns only the plain
+# company name with no preferred keywords, percentage, or '- D' shortName suffix.
+SEC_TYPE_OVERRIDES = {
+    'DCOMP': 'preferred',
+}
+
 
 def _cutoff(index, months):
     """Return a cutoff Timestamp compatible with the index's timezone."""
@@ -175,7 +182,7 @@ def lookup_ticker(original_sym):
     except Exception:
         info = {}
 
-    sec_type = detect_sec_type(clean_sym, info)
+    sec_type = SEC_TYPE_OVERRIDES.get(original_sym) or detect_sec_type(clean_sym, info)
 
     # Standard dividend logic
     div_history = ticker.dividends
