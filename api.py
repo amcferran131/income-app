@@ -102,58 +102,68 @@ def detect_freq_id(div_history, frequency):
     return None
 
 
-def detect_sec_type(clean_sym, info):
-    """Classify security type using symbol pattern and Yahoo Finance metadata.
+# Symbol suffixes that Yahoo Finance uses for preferred share series (-PA through -PQ)
+_PREFERRED_SUFFIXES = frozenset('-P' + c for c in 'ABCDEFGHIJKLMNOPQ')
 
-    Priority order:
-      1. Preferred  — symbol contains '-P' (e.g. WFC-PL, JPM-PM)
-      2. Preferred  — name contains preferred keywords (PFD, PREFERRED, PFD SER, etc.)
-      3. Preferred  — name contains a coupon-rate pattern (e.g. 6.75%, 5.5%)
-      4. Preferred  — shortName ends with ' - D' or ' - d' (Yahoo depositary share marker,
-                      e.g. BHFAN/BHFAO/BHFAP → 'Brighthouse Financial, Inc. - D')
-      5. ETF        — quoteType == 'ETF'
-      6. REIT       — sector == 'Real Estate'
-      7. Stock      — everything else
+# Name substrings that positively identify a preferred stock
+_PREFERRED_NAME_KEYWORDS = (
+    'PREFERRED', 'PFD', 'PFDPFD', 'PFD SER',
+    'DEP SHS', 'DEPOSITARY SHS', 'DEP. SHS',
+)
 
-    Note: DCOMP (Dime Community Bancshares) returns no preferred indicators from Yahoo
-    Finance (plain company name, no ' - D' suffix). It cannot be auto-detected as
-    preferred from metadata alone; add it to TRANSLATIONS or set type manually.
+
+def detect_sec_type(original_sym, clean_sym, info):
+    """Classify security type from Yahoo Finance metadata.
+
+    Evaluated in strict priority order:
+
+    1. SEC_TYPE_OVERRIDES  — hard-coded override table (e.g. DCOMP, HBANP)
+    2. Preferred           — quoteType == MUTUALFUND  OR
+                             clean symbol ends with -PA … -PQ (e.g. WFC-PL, ATH-PB)
+    3. Preferred           — longName or shortName contains a preferred keyword
+                             (PFD, PREFERRED, PFD SER, …) or a coupon-rate pattern
+                             (5.5%, 6.75%, etc.)
+    4. Preferred           — shortName ends with ' - D' or ' - d'
+                             (Yahoo depositary preferred marker — catches BHFAN/O/P)
+    5. ETF (bond)          — quoteType == ETF
+    6. REIT                — sector == Real Estate
+    7. Stock               — everything else
     """
-    # 1. Symbol pattern: dash followed by P (e.g. WFC-PL, ATH-PB)
-    if '-P' in clean_sym.upper():
+    # 1. Hard-coded override
+    override = SEC_TYPE_OVERRIDES.get(original_sym)
+    if override:
+        return override
+
+    quote_type = (info.get('quoteType') or '').upper()
+    sym_upper = clean_sym.upper()
+
+    # 2. MUTUALFUND quoteType or standard preferred symbol suffix
+    if quote_type == 'MUTUALFUND' or any(sym_upper.endswith(s) for s in _PREFERRED_SUFFIXES):
         return 'preferred'
 
+    # 3. Name keywords and coupon-rate pattern
     long_name = (info.get('longName') or '').upper()
     short_name_raw = (info.get('shortName') or '')
     combined = long_name or short_name_raw.upper()
 
-    # 2. Name keywords
-    PREFERRED_KEYWORDS = (
-        'PREFERRED', 'PFD', 'PFDPFD', 'PFD SER',
-        'DEP SHS', 'DEPOSITARY SHS', 'DEP. SHS',
-    )
-    if any(kw in combined for kw in PREFERRED_KEYWORDS):
+    if any(kw in combined for kw in _PREFERRED_NAME_KEYWORDS):
         return 'preferred'
-
-    # 3. Coupon-rate pattern in name: "6.75%", "5.5%", "7.25%", etc.
     if re.search(r'\d+\.?\d*\s*%', combined):
         return 'preferred'
 
-    # 4. Yahoo Finance shortName ' - D' / ' - d' suffix (depositary preferred marker)
-    #    Catches BHFAN, BHFAO, BHFAP and similar series where the name body is plain
+    # 4. Yahoo shortName ' - D' / ' - d' depositary marker
     if short_name_raw.strip().endswith((' - D', ' - d')):
         return 'preferred'
 
     # 5. ETF
-    quote_type = (info.get('quoteType') or '').upper()
     if quote_type == 'ETF':
         return 'bond'
 
     # 6. REIT
-    sector = (info.get('sector') or '').lower()
-    if 'real estate' in sector:
+    if 'real estate' in (info.get('sector') or '').lower():
         return 'reit'
 
+    # 7. Default
     return 'stock'
 
 
@@ -186,7 +196,7 @@ def lookup_ticker(original_sym):
     except Exception:
         info = {}
 
-    sec_type = SEC_TYPE_OVERRIDES.get(original_sym) or detect_sec_type(clean_sym, info)
+    sec_type = detect_sec_type(original_sym, clean_sym, info)
 
     # Standard dividend logic
     div_history = ticker.dividends
