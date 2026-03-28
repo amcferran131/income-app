@@ -2,11 +2,11 @@ import { useState, useEffect, useRef } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area, CartesianGrid } from "recharts";
 
 const SEC_TYPES = {
-  stock:     { label: "Stock",     color: "#3b82f6", bg: "#3b82f615" },
-  reit:      { label: "REIT",      color: "#8b5cf6", bg: "#8b5cf615" },
-  bond:      { label: "Bond/ETF",  color: "#06b6d4", bg: "#06b6d415" },
-  preferred: { label: "Preferred", color: "#10b981", bg: "#10b98115" },
-  cd:        { label: "MM/CD",     color: "#f59e0b", bg: "#f59e0b15" },
+  stock:     { label: "Equity Stock",     color: "#3b82f6", bg: "#3b82f615" },
+  reit:      { label: "Other",            color: "#8b5cf6", bg: "#8b5cf615" },
+  bond:      { label: "ETF",              color: "#06b6d4", bg: "#06b6d415" },
+  preferred: { label: "Preferred Stock",  color: "#10b981", bg: "#10b98115" },
+  cd:        { label: "Other",            color: "#f59e0b", bg: "#f59e0b15" },
 };
 
 const FREQ = [
@@ -34,6 +34,8 @@ const DEMO = [
 
 const fmt = (n, d=0) => n == null ? "--" :
   new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",minimumFractionDigits:d,maximumFractionDigits:d}).format(n);
+
+const fmtDate = s => { if(!s) return null; const p=s.split('-'); return MN[+p[1]-1]+' '+p[2]; };
 
 const parseNum = s => parseFloat(String(s||"0").replace(/[$,%\s,"()]/g,"")) || 0;
 
@@ -90,6 +92,8 @@ async function aiLookup(ticker, onResult, onError, onLoad) {
     onResult({
       divPerShare: data.dividend_per_payment ?? (data.dividend_per_share != null && data.payment_frequency ? +(data.dividend_per_share / data.payment_frequency).toFixed(4) : 0),
       freqId: data.freqId ?? "q_mar",
+      ...(data.price != null ? { price: data.price } : {}),
+      ...(data.last_payment_date ? { lastPaymentDate: data.last_payment_date } : {}),
       ...(data.note ? { notes: data.note } : {}),
     });
   } catch(e) { onError(e.message||"Failed"); }
@@ -280,7 +284,7 @@ export default function App() {
   };
 
   const bulkLookup = async () => {
-    const missing = holdings.filter(h=>!h.divPerShare||h.notes==="needs-lookup");
+    const missing = holdings.filter(h=>h.notes==="needs-lookup");
     if (!missing.length) { setBulkStatus("All positions have rates."); setTimeout(()=>setBulkStatus(""),3000); return; }
     setBulkRunning(true);
     let done=0;
@@ -313,7 +317,8 @@ export default function App() {
   const bst = mo.indexOf(Math.max(...mo));
   const now = new Date().getMonth();
   const gap = ann-target;
-  const needsLookup = holdings.filter(h=>!h.divPerShare||h.notes==="needs-lookup").length;
+  const needsLookup = holdings.filter(h=>h.notes==="needs-lookup").length;
+  const mktVal = holdings.reduce((a,h)=>a+(h.price||0)*h.shares,0);
 
   const barD = MN.map((m,i)=>({month:m,income:+mo[i].toFixed(2)}));
   const cumD = MN.map((m,i)=>({month:m,actual:+mo.slice(0,i+1).reduce((a,b)=>a+b,0).toFixed(2),target:+((target/12)*(i+1)).toFixed(2)}));
@@ -379,12 +384,13 @@ export default function App() {
 
         <div className="kpis">
           {[
-            {l:"Annual Income",  v:fmt(ann),   s:"projected",        c:"#1e293b"},
-            {l:"Monthly Avg",    v:fmt(avg),   s:"per month",        c:"#1e293b"},
-            {l:"Best Month",     v:MN[bst],    s:fmt(Math.max(...mo))+" est", c:"#8b5cf6"},
-            {l:"Income Goal",    v:fmt(target),s:"your target",      c:"#1e293b"},
-            {l:"Progress",       v:(ann/target*100).toFixed(0)+"%", s:gap>=0?"on track":"needs income", c:gap>=0?"#10b981":"#3b82f6"},
-            {l:"Holdings",       v:holdings.length, s:"positions",   c:"#1e293b"},
+            {l:"Annual Income",   v:fmt(ann),        s:"projected",        c:"#1e293b"},
+            {l:"Monthly Avg",     v:fmt(avg),        s:"per month",        c:"#1e293b"},
+            {l:"Best Month",      v:MN[bst],         s:fmt(Math.max(...mo))+" est", c:"#8b5cf6"},
+            {l:"Income Goal",     v:fmt(target),     s:"your target",      c:"#1e293b"},
+            {l:"Progress",        v:(ann/target*100).toFixed(0)+"%", s:gap>=0?"on track":"needs income", c:gap>=0?"#10b981":"#3b82f6"},
+            {l:"Holdings",        v:holdings.length, s:"positions",        c:"#1e293b"},
+            {l:"Market Value",    v:mktVal>0?fmt(mktVal):"--", s:"based on lookups", c:"#1e293b"},
           ].map((k,i)=>(
             <div key={i} className="kpi">
               <div className="klbl">{k.l}</div>
@@ -418,6 +424,7 @@ export default function App() {
                     <span style={{width:6,height:6,borderRadius:"50%",background:SEC_TYPES[h.type]?.color,display:"inline-block"}}/>
                     <span style={{fontFamily:"monospace",fontWeight:600,fontSize:11}}>{h.ticker}</span>
                     <span style={{fontFamily:"monospace",fontSize:10,color:"#10b981"}}>{fmt(h.shares*h.divPerShare)}</span>
+                    {h.lastPaymentDate&&<span style={{fontFamily:"monospace",fontSize:9,color:"#94a3b8"}}>est.{fmtDate(h.lastPaymentDate)}</span>}
                   </div>
                 ))}
               </div>
@@ -430,19 +437,22 @@ export default function App() {
             <div className="chdr"><span className="ctit">Holdings</span><span className="cbdg">{holdings.length} positions - edit shares inline</span></div>
             <div style={{overflowX:"auto"}}>
               <table className="tbl">
-                <thead><tr><th>Ticker</th><th>Name</th><th>Type</th><th>Shares</th><th>Div/Pmt</th><th>Frequency</th><th>Annual</th><th></th></tr></thead>
+                <thead><tr><th>Ticker</th><th>Name</th><th>Type</th><th>Shares</th><th>Price</th><th>Mkt Value</th><th>Div/Pmt</th><th>Frequency</th><th>Annual</th><th></th></tr></thead>
                 <tbody>
                   {holdings.map(h=>{
                     const fr=FREQ.find(f=>f.id===h.freqId);
                     const an=h.shares*h.divPerShare*(fr?.months.length||12);
                     const ti=SEC_TYPES[h.type];
-                    const flag=!h.divPerShare||h.notes==="needs-lookup";
+                    const flag=h.notes==="needs-lookup";
+                    const mv=h.price!=null?h.price*h.shares:null;
                     return (
                       <tr key={h.id} style={{background:flag?"#fffbeb":""}}>
                         <td><div style={{display:"flex",alignItems:"center",gap:5}}><span style={{width:6,height:6,borderRadius:"50%",background:ti?.color,display:"inline-block",flexShrink:0}}/><span style={{fontFamily:"monospace",fontWeight:600,fontSize:11}}>{h.ticker}{flag&&<span style={{color:"#f59e0b",fontSize:9,marginLeft:2}}>!</span>}</span></div></td>
                         <td><div style={{fontSize:10,color:"#64748b",maxWidth:180,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{h.name}</div></td>
                         <td><span style={{background:ti?.bg,color:ti?.color,fontFamily:"monospace",fontSize:9,padding:"2px 6px",borderRadius:20}}>{ti?.label}</span></td>
                         <td><input className="sinp" type="number" min="0" step="0.01" value={h.shares} onChange={e=>updS(h.id,e.target.value)}/></td>
+                        <td style={{fontFamily:"monospace",fontSize:10,color:"#64748b"}}>{h.price!=null?fmt(h.price,2):"--"}</td>
+                        <td style={{fontFamily:"monospace",fontSize:10}}>{mv!=null?fmt(mv):"--"}</td>
                         <td style={{fontFamily:"monospace",fontSize:10}}>{h.divPerShare>0?fmt(h.divPerShare,4):"--"}</td>
                         <td style={{fontSize:9,color:"#64748b",whiteSpace:"nowrap"}}>{fr?.label.split(" (")[0]}</td>
                         <td style={{fontFamily:"monospace",fontSize:10,color:an>0?"#10b981":"#94a3b8"}}>{an>0?fmt(an):"No Dividend"}</td>
@@ -570,8 +580,9 @@ body{background:#f1f5f9;color:#1e293b;font-family:'Outfit',sans-serif;}
 .goaltrack{flex:1;height:8px;background:#e2e8f0;border-radius:99px;overflow:hidden;}
 .goalfill{height:100%;border-radius:99px;transition:width .6s;}
 .goalpct{font-family:'DM Mono',monospace;font-size:11px;white-space:nowrap;font-weight:500;}
-.kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;}
-@media(max-width:900px){.kpis{grid-template-columns:repeat(3,1fr);}}
+.kpis{display:grid;grid-template-columns:repeat(7,1fr);gap:10px;}
+@media(max-width:1100px){.kpis{grid-template-columns:repeat(4,1fr);}}
+@media(max-width:700px){.kpis{grid-template-columns:repeat(3,1fr);}}
 @media(max-width:500px){.kpis{grid-template-columns:repeat(2,1fr);}}
 .kpi{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;}
 .klbl{font-family:'DM Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:#94a3b8;margin-bottom:5px;}

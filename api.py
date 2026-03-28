@@ -103,11 +103,12 @@ def lookup_ticker(original_sym):
         return {
             'symbol': original_sym,
             'yahoo_symbol': clean_sym,
-            'price': round(price, 4),
+            'price': round(float(price), 2),
             'dividend_per_share': round(price * 0.04, 4),
             'payment_frequency': 12,
             'annual_income_per_share': round(price * 0.04, 4),
             'freqId': 'monthly',
+            'last_payment_date': None,
             'note': 'Money market — 4% annual yield applied to NAV',
         }, None
 
@@ -126,14 +127,23 @@ def lookup_ticker(original_sym):
         frequency = min([1, 2, 4, 12], key=lambda f: abs(f - raw_freq))
     div_per_payment = round(annual_div_per_share / frequency, 4) if frequency else 0.0
 
+    hist = ticker.history(period="5d")
+    price = round(float(hist['Close'].iloc[-1]), 2) if not hist.empty else None
+
+    last_payment_date = (
+        div_history.index[-1].strftime('%Y-%m-%d') if not div_history.empty else None
+    )
+
     return {
         'symbol': original_sym,
         'yahoo_symbol': clean_sym,
+        'price': price,
         'dividend_per_share': annual_div_per_share,
         'payment_frequency': frequency,
         'dividend_per_payment': div_per_payment,
         'annual_income_per_share': annual_div_per_share,
         'freqId': detect_freq_id(div_history, frequency),
+        'last_payment_date': last_payment_date,
     }, None
 
 
