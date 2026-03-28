@@ -207,6 +207,105 @@ function ImportModal({rows, onConfirm, onClose}) {
   );
 }
 
+function PaymentSchedule({holdings}) {
+  const now = new Date();
+  const thisM = now.getMonth();
+  const nextM = (thisM + 1) % 12;
+
+  const payersFor = mi =>
+    holdings
+      .filter(h => { const f=FREQ.find(f=>f.id===h.freqId); return f?.months.includes(mi+1)&&h.divPerShare>0; })
+      .map(h => ({...h, amount:h.shares*h.divPerShare, estDay:h.lastPaymentDate?+h.lastPaymentDate.split('-')[2]:null}))
+      .sort((a,b) => {
+        if (a.estDay!==null&&b.estDay!==null) return a.estDay-b.estDay;
+        if (a.estDay!==null) return -1;
+        if (b.estDay!==null) return 1;
+        return b.amount-a.amount;
+      });
+
+  function MonthCard({label, mi, accent}) {
+    const list = payersFor(mi);
+    const total = list.reduce((s,h)=>s+h.amount,0);
+    return (
+      <div className="card" style={accent?{borderColor:"#3b82f6",borderWidth:2}:{}}>
+        <div className="chdr">
+          <span className="ctit" style={accent?{color:"#3b82f6"}:{}}>{label}</span>
+          {list.length>0&&<span style={{fontFamily:"'DM Mono',monospace",fontSize:14,fontWeight:500,color:"#10b981"}}>{fmt(total)}</span>}
+        </div>
+        {list.length===0
+          ? <div style={{textAlign:"center",color:"#94a3b8",fontSize:12,padding:"20px 0"}}>No dividend payments this month</div>
+          : <table className="tbl">
+              <thead><tr><th>Ticker</th><th>Name</th><th>Type</th><th>Est. Pay Date</th><th style={{textAlign:"right"}}>Amount</th></tr></thead>
+              <tbody>
+                {list.map(h=>{
+                  const ti=SEC_TYPES[h.type];
+                  const estDate=h.estDay?`${MN[mi]}/${String(h.estDay).padStart(2,"0")}`:"--";
+                  return (
+                    <tr key={h.id}>
+                      <td><div style={{display:"flex",alignItems:"center",gap:5}}><span style={{width:6,height:6,borderRadius:"50%",background:ti?.color,display:"inline-block",flexShrink:0}}/><span style={{fontFamily:"monospace",fontWeight:600,fontSize:11}}>{h.ticker}</span></div></td>
+                      <td><div style={{fontSize:10,color:"#64748b",maxWidth:220,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{h.name}</div></td>
+                      <td><span style={{background:ti?.bg,color:ti?.color,fontFamily:"monospace",fontSize:9,padding:"2px 6px",borderRadius:20}}>{ti?.label}</span></td>
+                      <td style={{fontFamily:"monospace",fontSize:11,color:"#64748b"}}>{estDate}</td>
+                      <td style={{fontFamily:"monospace",fontSize:11,color:"#10b981",textAlign:"right"}}>{fmt(h.amount)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+        }
+      </div>
+    );
+  }
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <MonthCard label={`This Month — ${MN[thisM]} ${now.getFullYear()}`} mi={thisM} accent={true}/>
+      <MonthCard label={`Next Month — ${MN[nextM]} ${nextM<thisM?now.getFullYear()+1:now.getFullYear()}`} mi={nextM} accent={false}/>
+
+      <div className="card">
+        <div className="chdr"><span className="ctit">Full Year Payment Schedule</span><span className="cbdg">Estimated dates based on last known payment</span></div>
+        <div style={{display:"flex",flexDirection:"column",gap:20}}>
+          {MN.map((m,i)=>{
+            const list=payersFor(i);
+            const total=list.reduce((s,h)=>s+h.amount,0);
+            const isCur=i===thisM;
+            return (
+              <div key={m}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",paddingBottom:6,marginBottom:8,borderBottom:`2px solid ${isCur?"#bfdbfe":"#f1f5f9"}`}}>
+                  <span style={{fontFamily:"'DM Mono',monospace",fontWeight:700,fontSize:12,color:isCur?"#3b82f6":"#1e293b"}}>
+                    {m}{isCur?" ← now":""}
+                  </span>
+                  {list.length>0
+                    ? <span style={{fontFamily:"'DM Mono',monospace",fontSize:11,color:"#10b981"}}>{fmt(total)} · {list.length} payer{list.length!==1?"s":""}</span>
+                    : <span style={{fontFamily:"'DM Mono',monospace",fontSize:10,color:"#cbd5e1"}}>no payments</span>
+                  }
+                </div>
+                {list.length>0&&(
+                  <div style={{display:"flex",flexDirection:"column",gap:5}}>
+                    {list.map(h=>{
+                      const ti=SEC_TYPES[h.type];
+                      const estDate=h.estDay?`${m}/${String(h.estDay).padStart(2,"0")}`:"--";
+                      return (
+                        <div key={h.id} style={{display:"flex",alignItems:"center",gap:10,padding:"5px 8px",background:isCur?"#eff6ff":"#f8fafc",borderRadius:6,border:`1px solid ${isCur?"#bfdbfe":"#f1f5f9"}`}}>
+                          <span style={{width:6,height:6,borderRadius:"50%",background:ti?.color,flexShrink:0}}/>
+                          <span style={{fontFamily:"monospace",fontWeight:600,fontSize:11,width:64,flexShrink:0}}>{h.ticker}</span>
+                          <span style={{flex:1,fontSize:10,color:"#64748b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{h.name}</span>
+                          <span style={{fontFamily:"monospace",fontSize:10,color:"#94a3b8",width:52,flexShrink:0,textAlign:"right"}}>{estDate}</span>
+                          <span style={{fontFamily:"monospace",fontSize:11,color:"#10b981",width:68,textAlign:"right",flexShrink:0}}>{fmt(h.amount)}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Welcome({onDemo, onImport, onManual, fileRef}) {
   return (
     <div className="welcome">
@@ -225,6 +324,7 @@ function Welcome({onDemo, onImport, onManual, fileRef}) {
 
 export default function App() {
   const [holdings, setHoldings] = useState([]);
+  const [view, setView] = useState("dashboard");
   const [modal, setModal] = useState(null);
   const [impModal, setImpModal] = useState(null);
   const [active, setActive] = useState(null);
@@ -350,6 +450,10 @@ export default function App() {
               <div className="title">Personal Portfolio Income Calculator</div>
               <div className="sub">{holdings.length} positions</div>
             </div>
+            <div className="navtabs">
+              <button className={"ntab"+(view==="dashboard"?" active":"")} onClick={()=>setView("dashboard")}>Dashboard</button>
+              <button className={"ntab"+(view==="schedule"?" active":"")} onClick={()=>setView("schedule")}>Payment Schedule</button>
+            </div>
           </div>
           <div className="hright">
             {needsLookup>0&&<button className="lbtn" onClick={bulkLookup} disabled={bulkRunning}>{bulkRunning?"Running...":"Lookup "+needsLookup+" rates"}</button>}
@@ -360,7 +464,9 @@ export default function App() {
           </div>
         </header>
 
-        <div className="goalbar">
+        {view==="schedule"&&<PaymentSchedule holdings={holdings}/>}
+
+        {view==="dashboard"&&<><div className="goalbar">
           <div className="goalleft">
             <span className="goallbl">Annual Income Goal:</span>
             {editTarget?(
@@ -527,6 +633,8 @@ export default function App() {
           </div>
         </div>
 
+        </>}
+
         <div className="footer">Personal Portfolio Income Calculator | {holdings.length} positions | {fmt(ann)} projected annual income | Your data stays in your browser</div>
       </div>
 
@@ -565,6 +673,10 @@ body{background:#f1f5f9;color:#1e293b;font-family:'Outfit',sans-serif;}
 .title{font-size:18px;font-weight:800;letter-spacing:-.02em;}
 .sub{font-size:11px;color:#64748b;margin-top:1px;}
 .hright{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.navtabs{display:flex;gap:3px;background:#f1f5f9;border-radius:8px;padding:3px;margin-left:8px;}
+.ntab{background:none;border:none;border-radius:6px;padding:5px 13px;font-family:'Outfit',sans-serif;font-size:12px;font-weight:600;cursor:pointer;color:#64748b;transition:all .15s;white-space:nowrap;}
+.ntab.active{background:#fff;color:#1e293b;box-shadow:0 1px 3px #0000001a;}
+.ntab:hover:not(.active){color:#1e293b;}
 .abtn{background:#3b82f6;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-family:'Outfit',sans-serif;font-weight:700;font-size:12px;cursor:pointer;}
 .ibtn{background:#fff;color:#1e293b;border:1px solid #cbd5e1;border-radius:8px;padding:7px 12px;font-family:'Outfit',sans-serif;font-weight:600;font-size:12px;cursor:pointer;}
 .ibtn:hover{border-color:#3b82f6;color:#3b82f6;}
