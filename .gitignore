@@ -1,0 +1,9 @@
+node_modules
+dist
+*.log
+*.xlsx
+*.csv
+__pycache__
+*.pyc
+
+.vercel
