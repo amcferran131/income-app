@@ -38,6 +38,7 @@ TRANSLATIONS = {
 # company name with no preferred keywords, percentage, or '- D' shortName suffix.
 SEC_TYPE_OVERRIDES = {
     'DCOMP': 'preferred',
+    'DCIN/PR': 'preferred',
     'AFSIA': 'preferred',
     'AFSIC': 'preferred',
     'HBANP': 'preferred',
