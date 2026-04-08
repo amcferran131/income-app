@@ -23,6 +23,7 @@ def dividends_preflight():
     return add_cors(app.make_default_options_response())
 
 TRANSLATIONS = {
+    'DCIN/PR': 'DCOMP',
     'ATH-B': 'ATH-PB', 'ATH/PRB': 'ATH-PB',
     'CODI-A': 'CODI-PA', 'CODI/PRA': 'CODI-PA',
     'COF-I': 'COF-PI', 'COF/PRI': 'COF-PI',
