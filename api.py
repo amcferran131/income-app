@@ -172,7 +172,16 @@ def detect_sec_type(original_sym, clean_sym, info):
 
 def lookup_ticker(original_sym):
     clean_sym = TRANSLATIONS.get(original_sym, original_sym.replace('/', '-'))
-    ticker = yf.Ticker(clean_sym)
+ticker = yf.Ticker(clean_sym)
+
+# Fallback: if ticker ends with /PR and not explicitly translated,
+# strip /PR and retry — handles Schwab's preferred export format
+if original_sym not in TRANSLATIONS and original_sym.endswith('/PR'):
+    base_sym = original_sym[:-3]
+    test = yf.Ticker(base_sym)
+    if not test.dividends.empty:
+        clean_sym = base_sym
+        ticker = test
 
     # Money market: fixed 4% annual yield
     if clean_sym == 'SWVXX':
