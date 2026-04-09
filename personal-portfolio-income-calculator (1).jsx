@@ -276,7 +276,7 @@ export default function App() {
         const mapped = rows.map((r,i)=>({
           _idx:i,
           ticker:(()=>{
-  const t=(r["Symbol"]||r["symbol"]||r["Ticker"]||"").replace(/\s/g,"").toUpperCase();
+  ticker:(()=>{const t=(r["Symbol"]||r["symbol"]||r["Ticker"]||"").replace(/\s/g,"").toUpperCase();const PR_FIX={'DCOM/PR':'DCOMP','DCIN/PR':'DCOMP'};return PR_FIX[t]||t;})(),
   const PR_FIX={'DCOM/PR':'DCOMP','DCIN/PR':'DCOMP'};
   return PR_FIX[t]||t;
 })(),
