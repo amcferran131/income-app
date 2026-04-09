@@ -275,7 +275,11 @@ export default function App() {
         const rows = parseCSV(ev.target.result);
         const mapped = rows.map((r,i)=>({
           _idx:i,
-          ticker:(r["Symbol"]||r["symbol"]||r["Ticker"]||"").replace(/\s/g,"").toUpperCase(),
+          ticker:(()=>{
+  const t=(r["Symbol"]||r["symbol"]||r["Ticker"]||"").replace(/\s/g,"").toUpperCase();
+  const PR_FIX={'DCOM/PR':'DCOMP','DCIN/PR':'DCOMP'};
+  return PR_FIX[t]||t;
+})(),
           name:(r["Description"]||r["description"]||r["Name"]||r["Investment Name"]||"").trim(),
           shares:parseNum(getShares(r)),
         })).filter(r=>r.ticker&&r.ticker.length>=1&&r.ticker.length<=12&&r.shares>0);
