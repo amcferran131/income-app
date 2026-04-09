@@ -5,6 +5,7 @@ import calendar
 import re
 from collections import Counter
 
+
 app = Flask(__name__)
 
 ALLOWED_ORIGIN = 'https://dividend-calculator-blond.vercel.app'
