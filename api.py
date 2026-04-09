@@ -24,6 +24,7 @@ def dividends_preflight():
 
 TRANSLATIONS = {
     'DCIN/PR': 'DCOMP',
+    'DCOM/PR': 'DCOMP', 
     'ATH-B': 'ATH-PB', 'ATH/PRB': 'ATH-PB',
     'CODI-A': 'CODI-PA', 'CODI/PRA': 'CODI-PA',
     'COF-I': 'COF-PI', 'COF/PRI': 'COF-PI',
