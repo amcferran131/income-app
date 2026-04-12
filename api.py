@@ -3,8 +3,8 @@ import yfinance as yf
 import pandas as pd
 import calendar
 import re
+import os
 from collections import Counter
-
 
 app = Flask(__name__)
 
@@ -25,7 +25,7 @@ def dividends_preflight():
 
 TRANSLATIONS = {
     'DCIN/PR': 'DCOMP',
-    'DCOM/PR': 'DCOMP', 
+    'DCOM/PR': 'DCOMP',
     'DCOM-PR': 'DCOMP',
     'ATH-B': 'ATH-PB', 'ATH/PRB': 'ATH-PB',
     'CODI-A': 'CODI-PA', 'CODI/PRA': 'CODI-PA',
@@ -37,9 +37,6 @@ TRANSLATIONS = {
     'AXS/PRE': 'AXS-PE',
 }
 
-# Tickers whose sec_type cannot be inferred from Yahoo Finance metadata and must be
-# hard-coded. DCOMP (Dime Community Bancshares preferred) returns only the plain
-# company name with no preferred keywords, percentage, or '- D' shortName suffix.
 SEC_TYPE_OVERRIDES = {
     'DCOMP': 'preferred',
     'DCIN/PR': 'preferred',
@@ -49,143 +46,80 @@ SEC_TYPE_OVERRIDES = {
     'OZKAP': 'preferred',
 }
 
-
 def _cutoff(index, months):
-    """Return a cutoff Timestamp compatible with the index's timezone."""
     ts = pd.Timestamp.now(tz='UTC') - pd.DateOffset(months=months)
     return ts.tz_localize(None) if index.tz is None else ts
 
-
 def _payment_month(dt):
-    """Normalize a payment date to its intended month.
-
-    Payments on days 1–4 are almost always a prior-month payment pushed forward
-    by a weekend/holiday (e.g. May 1 = intended April 30). Attribute those to
-    the previous month so quarterly cycle detection is accurate.
-    """
     if dt.day <= 4:
         return dt.month
     return dt.month
 
-
 def detect_freq_id(div_history, frequency):
-    """Determine freqId from actual payment month patterns in dividend history."""
     if frequency == 0:
         return None
     if frequency == 12:
         return 'monthly'
-
-    # Use last 36 months for a reliable sample
     recent = div_history[div_history.index > _cutoff(div_history.index, 36)]
     if recent.empty:
         return None
-
     months = [_payment_month(d) for d in recent.index]
-
     if frequency == 4:
-        # Jan/Apr/Jul/Oct → m%3==1 → q_jan
-        # Feb/May/Aug/Nov → m%3==2 → q_feb
-        # Mar/Jun/Sep/Dec → m%3==0 → q_mar
         counts = Counter(m % 3 for m in months)
         dominant = counts.most_common(1)[0][0]
         return {1: 'q_jan', 2: 'q_feb', 0: 'q_mar'}[dominant]
-
     if frequency == 2:
-        # Fold each month into its base (1–6) by subtracting 6 from second half
         base_months = [m if m <= 6 else m - 6 for m in months]
         counts = Counter(base_months)
         base = counts.most_common(1)[0][0]
         labels = {1: 'semi_jan', 2: 'semi_feb', 3: 'semi_mar',
                   4: 'semi_apr', 5: 'semi_may', 6: 'semi_jun'}
         return labels.get(base)
-
     if frequency == 1:
         counts = Counter(months)
         m = counts.most_common(1)[0][0]
         return f'annual_{calendar.month_abbr[m].lower()}'
-
     return None
 
-
-# Symbol suffixes that Yahoo Finance uses for preferred share series (-PA through -PQ)
 _PREFERRED_SUFFIXES = frozenset('-P' + c for c in 'ABCDEFGHIJKLMNOPQ')
 
-# Name substrings that positively identify a preferred stock
 _PREFERRED_NAME_KEYWORDS = (
     'PREFERRED', 'PFD', 'PFDPFD', 'PFD SER',
     'DEP SHS', 'DEPOSITARY SHS', 'DEP. SHS',
 )
 
-
 def detect_sec_type(original_sym, clean_sym, info):
-    """Classify security type from Yahoo Finance metadata.
-
-    Evaluated in strict priority order:
-
-    1. SEC_TYPE_OVERRIDES  — hard-coded override table (e.g. DCOMP, HBANP)
-    2. Preferred           — quoteType == MUTUALFUND  OR
-                             clean symbol ends with -PA … -PQ (e.g. WFC-PL, ATH-PB)
-    3. Preferred           — longName or shortName contains a preferred keyword
-                             (PFD, PREFERRED, PFD SER, …) or a coupon-rate pattern
-                             (5.5%, 6.75%, etc.)
-    4. Preferred           — shortName ends with ' - D' or ' - d'
-                             (Yahoo depositary preferred marker — catches BHFAN/O/P)
-    5. ETF (bond)          — quoteType == ETF
-    6. REIT                — sector == Real Estate
-    7. Stock               — everything else
-    """
-    # 1. Hard-coded override
     override = SEC_TYPE_OVERRIDES.get(original_sym)
     if override:
         return override
-
     quote_type = (info.get('quoteType') or '').upper()
     sym_upper = clean_sym.upper()
-
-    # 2. MUTUALFUND quoteType or standard preferred symbol suffix
     if quote_type == 'MUTUALFUND' or any(sym_upper.endswith(s) for s in _PREFERRED_SUFFIXES):
         return 'preferred'
-
-    # 3. Name keywords and coupon-rate pattern
     long_name = (info.get('longName') or '').upper()
     short_name_raw = (info.get('shortName') or '')
     combined = long_name or short_name_raw.upper()
-
     if any(kw in combined for kw in _PREFERRED_NAME_KEYWORDS):
         return 'preferred'
     if re.search(r'\d+\.?\d*\s*%', combined):
         return 'preferred'
-
-    # 4. Yahoo shortName ' - D' / ' - d' depositary marker
     if short_name_raw.strip().endswith((' - D', ' - d')):
         return 'preferred'
-
-    # 5. ETF
     if quote_type == 'ETF':
         return 'bond'
-
-    # 6. REIT
     if 'real estate' in (info.get('sector') or '').lower():
         return 'reit'
-
-    # 7. Default
     return 'stock'
-
 
 def lookup_ticker(original_sym):
     clean_sym = TRANSLATIONS.get(original_sym, original_sym.replace('/', '-'))
-ticker = yf.Ticker(clean_sym)
-
-# Fallback: if ticker ends with /PR and not explicitly translated,
-# strip /PR and retry — handles Schwab's preferred export format
-if original_sym not in TRANSLATIONS and original_sym.endswith('/PR'):
-    base_sym = original_sym[:-3]
-    test = yf.Ticker(base_sym)
-    if not test.dividends.empty:
-        clean_sym = base_sym
-        ticker = test
-
-    # Money market: fixed 4% annual yield
+    ticker = yf.Ticker(clean_sym)
+    if original_sym not in TRANSLATIONS and original_sym.endswith('/PR'):
+        base_sym = original_sym[:-3]
+        test = yf.Ticker(base_sym)
+        if not test.dividends.empty:
+            clean_sym = base_sym
+            ticker = test
     if clean_sym == 'SWVXX':
         hist = ticker.history(period="5d")
         if hist.empty:
@@ -203,37 +137,27 @@ if original_sym not in TRANSLATIONS and original_sym.endswith('/PR'):
             'last_payment_date': None,
             'note': 'Money market — 4% annual yield applied to NAV',
         }, None
-
-    # Fetch metadata once; fall back to empty dict on any error
     try:
         info = ticker.info or {}
     except Exception:
         info = {}
-
     sec_type = detect_sec_type(original_sym, clean_sym, info)
-
-    # Standard dividend logic
     div_history = ticker.dividends
     last_12 = div_history[div_history.index > _cutoff(div_history.index, 12)]
     annual_div_per_share = round(float(last_12.sum()), 4)
-
     last_24 = div_history[div_history.index > _cutoff(div_history.index, 24)]
     payment_count = len(last_24)
     if payment_count == 0:
         frequency = 0
     else:
-        raw_freq = payment_count / 2  # annualize over 24-month window
-        # Snap to nearest standard frequency
+        raw_freq = payment_count / 2
         frequency = min([1, 2, 4, 12], key=lambda f: abs(f - raw_freq))
     div_per_payment = round(annual_div_per_share / frequency, 4) if frequency else 0.0
-
     hist = ticker.history(period="5d")
     price = round(float(hist['Close'].iloc[-1]), 2) if not hist.empty else None
-
     last_payment_date = (
         div_history.index[-1].strftime('%Y-%m-%d') if not div_history.empty else None
     )
-
     return {
         'symbol': original_sym,
         'yahoo_symbol': clean_sym,
@@ -247,28 +171,18 @@ if original_sym not in TRANSLATIONS and original_sym.endswith('/PR'):
         'last_payment_date': last_payment_date,
     }, None
 
-
 @app.route('/dividends', methods=['GET', 'POST'])
 def dividends():
-    """
-    Accept a list of ticker symbols and return dividend info for each.
-
-    GET  /dividends?tickers=AAPL,O,SWVXX
-    POST /dividends  {"tickers": ["AAPL", "O", "SWVXX"]}
-    """
     if request.method == 'POST':
         body = request.get_json(silent=True) or {}
         tickers = body.get('tickers', [])
     else:
         raw = request.args.get('tickers', '')
         tickers = [t.strip() for t in raw.split(',') if t.strip()]
-
     if not tickers:
         return jsonify({'error': 'Provide tickers as query param or JSON body'}), 400
-
     results = []
     errors = []
-
     for sym in tickers:
         sym = sym.strip().upper()
         try:
@@ -279,15 +193,11 @@ def dividends():
                 results.append(data)
         except Exception as e:
             errors.append({'symbol': sym, 'error': str(e)})
-
     response = {'results': results}
     if errors:
         response['errors'] = errors
-
     return jsonify(response)
 
-
 if __name__ == '__main__':
-    import os
     port = int(os.environ.get('PORT', 5000))
     app.run(debug=False, host='0.0.0.0', port=port)
